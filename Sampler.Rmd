@@ -1,0 +1,97 @@
+---
+title: "Sampling from OA"
+author: "GG Cantone"
+date: "2023-06-02"
+output:
+---
+
+In case you have not the package manager `pacman`, install it.
+
+```{r}
+install.packages(pacman)
+```
+
+Setup
+
+```{r setup, include=FALSE}
+pacman::p_load(
+  tidyverse,
+  openalexR,
+  readr
+)
+```
+
+---
+
+Sampling all concepts
+
+```{r}
+oa_fetch(
+  entity = "concepts",
+  level = c(0:1)
+) -> concepts
+```
+
+---
+
+Importing WOS
+
+```{r}
+read_csv("Scientific.csv") %>%
+  add_row(read_csv("Social_Sciences.csv")) %>%
+  select(-`Publisher address`) %>%
+  distinct(`Journal title`,
+           .keep_all = T) %>%
+  pivot_longer(cols = c("ISSN","eISSN"),
+               names_to = "Type",
+               values_to = "ISSN"
+  ) %>%
+  select(-Type) %>%
+  distinct(`Journal title`,
+           .keep_all = T) -> WoS_j
+```
+
+Download OpenAlex data on journals
+
+```{r}
+oa_fetch(
+  entity = "venues",
+  issn = WoS_j$ISSN
+) -> journals
+```
+
+Joins of categories
+
+```{r}
+journals %>%
+  transmute(id,
+         journal = display_name,
+         main_issn = issn_l %>% as.character(),
+         n_papers = works_count,
+         x_concepts) %>%
+  left_join(WoS_j %>%
+              rename(WoS_JSC = `Web of Science Categories`,
+                     main_issn = ISSN
+                     ) %>%
+              select(main_issn,WoS_JSC,
+                     Languages)) -> db_j 
+
+db_j %>%
+  filter(!WoS_JSC %>% is.na()) -> db_j
+```
+
+
+## 
+
+Sample papers
+
+```{r}
+oa_fetch(
+  entity = "works",
+  abstract = F,
+  publication_year = c(2011:2015),
+  referenced_works = ,
+  type = "journal-article",
+  options = list(sample = 10)
+) -> sample
+```
