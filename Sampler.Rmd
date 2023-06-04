@@ -64,7 +64,7 @@ Joins of categories
 
 ```{r}
 journals %>%
-  transmute(id,
+  transmute(id_j = id,
          journal = display_name,
          main_issn = issn_l %>% as.character(),
          n_papers = works_count,
@@ -77,8 +77,47 @@ journals %>%
                      Languages)) -> db_j 
 
 db_j %>%
-  filter(!WoS_JSC %>% is.na()) -> db_j
+  filter(!WoS_JSC %>% is.na(),
+         !x_concepts %>% is.na()) -> db_j
 ```
+
+Data cleaning
+
+```{r}
+db_j %>%
+  mutate(refined_WoS_JSC = WoS_JSC %>%
+           str_replace("Public, Environmental & Occupational Health",
+                       "Public Health") %>%
+           str_replace_all(",",":") %>%
+           str_replace_all(" \\| ",", "),
+         coarse_WoS_JSC = refined_WoS_JSC %>%
+           str_remove_all("\\:.*?(?=,|$)"),
+         coarse_WoS_JSC =
+           map_chr(str_split(coarse_WoS_JSC,", "),
+                   ~ str_c(unique(.x), collapse = ", "))
+         ) %>%
+  select(-WoS_JSC) -> db_j_p
+
+db_j_p %>%
+  mutate(x_concepts = map(x_concepts, ~ filter(.x,level < 2))
+         ) -> db_j_p
+
+```
+
+How many combinations of WOS categories?
+
+```{r}
+
+db_j_p %>%
+  count(coarse_WoS_JSC) %>% View()
+
+db_j_p %>%
+  count(refined_WoS_JSC) %>% View()
+
+
+
+```
+
 
 
 ## 
