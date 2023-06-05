@@ -5,8 +5,6 @@ date: "2023-06-02"
 output:
 ---
 
-Is this going to work?
-
 In case you have not the package manager `pacman`, install it.
 
 ```{r}
@@ -19,7 +17,9 @@ Setup
 pacman::p_load(
   tidyverse,
   openalexR,
-  readr
+  readr,
+  janitor,
+  ggExtra
 )
 ```
 
@@ -76,9 +76,7 @@ journals %>%
                      main_issn = ISSN
                      ) %>%
               select(main_issn,WoS_JSC,
-                     Languages)) -> db_j 
-
-db_j %>%
+                     Languages)) %>%
   filter(!WoS_JSC %>% is.na(),
          !x_concepts %>% is.na()) -> db_j
 ```
@@ -96,13 +94,15 @@ db_j %>%
            str_remove_all("\\:.*?(?=,|$)"),
          coarse_WoS_JSC =
            map_chr(str_split(coarse_WoS_JSC,", "),
-                   ~ str_c(unique(.x), collapse = ", "))
+                   ~ str_c(unique(.x), collapse = ", ")),
+         mention_multidis = str_detect(tolower(WoS_JSC),"multidis|interdis"),
+         n_coarse = str_count(coarse_WoS_JSC,","),
+         multidis = if_else((n_coarse == 0) &
+                              (mention_multidis == 0),
+                            0,1)
          ) %>%
-  select(-WoS_JSC) -> db_j_p
-
-db_j_p %>%
   mutate(x_concepts = map(x_concepts, ~ filter(.x,level < 2))
-         ) -> db_j_p
+         ) -> db_j
 
 ```
 
@@ -110,14 +110,64 @@ How many combinations of WOS categories?
 
 ```{r}
 
-db_j_p %>%
+db_j %>%
   count(coarse_WoS_JSC) %>% View()
 
-db_j_p %>%
+db_j %>%
   count(refined_WoS_JSC) %>% View()
 
+```
 
 
+Map mono-disciplinary association
+
+```{r}
+
+db_j %>%
+  filter(multidis == 0) %>%
+  unnest(x_concepts) %>%
+  summarise(score = sum(score*n_papers),
+            .by = c(coarse_WoS_JSC,display_name)
+            ) %>%
+  rename(OpAl_JSC = display_name) %>%
+  arrange(coarse_WoS_JSC,-score) %>%
+  mutate(score = score/sum(score),
+         .by = coarse_WoS_JSC) %>%
+  adorn_rounding(4) %>%
+  View()
+
+```
+
+Berger correlation
+
+```{r}
+
+db_j %>%
+  filter(multidis == 0) %>%
+  unnest(x_concepts) %>%
+  summarise(score = sum(score*n_papers),
+            .by = c(coarse_WoS_JSC,display_name)
+            ) %>%
+  rename(OpAl_JSC = display_name) %>%
+  arrange(coarse_WoS_JSC,-score) %>%
+  mutate(score = score/sum(score),
+         .by = coarse_WoS_JSC) %>%
+  adorn_rounding(4) %>%
+  filter(score == max(score),
+         .by = coarse_WoS_JSC) %>%
+  mutate(name_lgt = str_length(coarse_WoS_JSC)) -> berger_map
+
+```
+
+
+Marginal Scatterplot
+
+```{r}
+berger_map %>%
+  ggplot(aes(x = score,
+             y = name_lgt)) +
+  geom_point() -> p
+  ggMarginal(p)
 ```
 
 
@@ -131,7 +181,6 @@ oa_fetch(
   entity = "works",
   abstract = F,
   publication_year = c(2011:2015),
-  referenced_works = ,
   type = "journal-article",
   options = list(sample = 10)
 ) -> sample
