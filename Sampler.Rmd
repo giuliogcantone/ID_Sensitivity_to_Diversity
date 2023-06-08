@@ -31,10 +31,32 @@ Sampling all concepts
 oa_fetch(
   entity = "concepts",
   level = c(0:1)
+<<<<<<< HEAD
 ) -> concepts
 
 concepts %>%
   count(level)
+=======
+) -> OA_concepts
+
+OA_concepts %>%
+  rename(concept = display_name,
+         rel=related_concepts) %>%
+  select(concept,
+         level,
+         rel) %>%
+  unnest(rel,
+         names_sep = "_") %>%
+  rename(rel_concept = rel_display_name) %>%
+  select(concept,
+         level,
+         rel_id,
+         rel_concept,
+         rel_level,
+         rel_score,
+         ) %>%
+  filter(rel_level <2)  -> OAc_proximity
+>>>>>>> 6b9db5e2bd4611211aae48736d76d7a2f021b201
 ```
 
 ---
@@ -55,6 +77,15 @@ read_csv("Scientific.csv") %>%
   distinct(`Journal title`,
            .keep_all = T) -> WoS_j
 ```
+
+Importing WoS Fields
+
+```{r}
+read_csv("WoS_categories.csv") %>%
+  filter(Edition == "ESCI") %>%
+  select(Category,Group) -> Wos_SC
+```
+
 
 Download OpenAlex data on journals
 
@@ -88,19 +119,19 @@ Data cleaning
 
 ```{r}
 db_j %>%
-  mutate(refined_WoS_JSC = WoS_JSC %>%
+  mutate(stnd_WoS_JSC = WoS_JSC %>%
            str_replace("Public, Environmental & Occupational Health",
                        "Public Health") %>%
            str_replace_all(",",":") %>%
            str_replace_all(" \\| ",", "),
-         coarse_WoS_JSC = refined_WoS_JSC %>%
+         coarse_WoS_JSC = stnd_WoS_JSC %>%
            str_remove_all("\\:.*?(?=,|$)"),
          coarse_WoS_JSC =
            map_chr(str_split(coarse_WoS_JSC,", "),
                    ~ str_c(unique(.x), collapse = ", ")),
          mention_multidis = str_detect(tolower(WoS_JSC),"multidis|interdis"),
-         n_coarse = str_count(coarse_WoS_JSC,","),
-         multidis = if_else((n_coarse == 0) &
+         n_stnd = str_count(stnd_WoS_JSC,","),
+         multidis = if_else((n_stnd == 0) &
                               (mention_multidis == 0),
                             0,1)
          ) %>%
@@ -117,12 +148,17 @@ db_j %>%
   count(coarse_WoS_JSC) %>% View()
 
 db_j %>%
-  count(refined_WoS_JSC) %>% View()
+  count(stnd_WoS_JSC) %>% View()
+
+db_j %>%
+  filter(multidis == F) %>%
+  count(stnd_WoS_JSC) %>% View()
 
 ```
 
 
 Map mono-disciplinary association
+with Berger correlation
 
 ```{r}
 
@@ -130,35 +166,32 @@ db_j %>%
   filter(multidis == 0) %>%
   unnest(x_concepts) %>%
   summarise(score = sum(score*n_papers),
-            .by = c(coarse_WoS_JSC,display_name)
+            .by = c(stnd_WoS_JSC,display_name)
             ) %>%
-  rename(OpAl_JSC = display_name) %>%
-  arrange(coarse_WoS_JSC,-score) %>%
-  mutate(score = score/sum(score),
-         .by = coarse_WoS_JSC) %>%
+  rename(max_OpAl_JSC = display_name) %>%
+  arrange(stnd_WoS_JSC,-score) %>%
+  mutate(max_score = score/sum(score),
+         .by = stnd_WoS_JSC) %>%
   adorn_rounding(4) %>%
-  View()
+  filter(score == max(score),
+         .by = stnd_WoS_JSC) %>%
+  mutate(name_lgt = str_length(stnd_WoS_JSC)) %>%
+  adorn_rounding(4) -> berger_map
+
+berger_map %>%
+  count(max_OpAl_JSC) %>%
+  arrange(-n)
 
 ```
 
-Berger correlation
+Scatterplot
 
 ```{r}
 
-db_j %>%
-  filter(multidis == 0) %>%
-  unnest(x_concepts) %>%
-  summarise(score = sum(score*n_papers),
-            .by = c(coarse_WoS_JSC,display_name)
-            ) %>%
-  rename(OpAl_JSC = display_name) %>%
-  arrange(coarse_WoS_JSC,-score) %>%
-  mutate(score = score/sum(score),
-         .by = coarse_WoS_JSC) %>%
-  adorn_rounding(4) %>%
-  filter(score == max(score),
-         .by = coarse_WoS_JSC) %>%
-  mutate(name_lgt = str_length(coarse_WoS_JSC)) -> berger_map
+berger_map %>%
+  ggplot(aes(x = max_score)) +
+  geom_density()
+          
 
 ```
 
@@ -166,11 +199,11 @@ db_j %>%
 Marginal Scatterplot
 
 ```{r}
-berger_map %>%
-  ggplot(aes(x = score,
-             y = name_lgt)) +
-  geom_point() -> p
-  ggMarginal(p)
+ggMarginal(berger_map %>%
+  ggplot(aes(x = max_score,
+             y = name_lgt)
+         )+
+  geom_point())
 ```
 
 
