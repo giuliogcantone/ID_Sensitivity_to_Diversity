@@ -168,11 +168,23 @@ db_j %>%
   adorn_rounding(4) %>%
   filter(score == max(score),
          .by = stnd_WoS_JSC) %>%
-  mutate(name_lgt = str_length(stnd_WoS_JSC)) -> berger_map
+  mutate(name_lgt = str_length(stnd_WoS_JSC)) %>%
+  adorn_rounding(4) -> berger_map
 
 berger_map %>%
   count(max_OpAl_JSC) %>%
   arrange(-n)
+
+```
+
+Scatterplot
+
+```{r}
+
+berger_map %>%
+  ggplot(aes(x = max_score)) +
+  geom_density()
+          
 
 ```
 
@@ -181,7 +193,7 @@ Marginal Scatterplot
 
 ```{r}
 ggMarginal(berger_map %>%
-  ggplot(aes(x = score,
+  ggplot(aes(x = max_score,
              y = name_lgt)
          )+
   geom_point())

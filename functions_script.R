@@ -9,3 +9,4 @@ robustrao::RaoStirling(matrix(rep(c(5,2,2),10),
                               ncol = 3)) -> RS
 
 1/(1 - RS)
+
