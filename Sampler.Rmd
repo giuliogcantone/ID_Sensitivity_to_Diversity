@@ -32,6 +32,9 @@ oa_fetch(
   entity = "concepts",
   level = c(0:1)
 ) -> concepts
+
+concepts %>%
+  count(level)
 ```
 
 ---
