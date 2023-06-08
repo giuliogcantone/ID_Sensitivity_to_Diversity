@@ -18,48 +18,16 @@ pacman::p_load(
   tidyverse,
   openalexR,
   readr,
+  readxl,
   janitor,
-  ggExtra
+  ggExtra,
+  rvest
 )
 ```
 
 ---
 
-Sampling all concepts
-
-```{r}
-oa_fetch(
-  entity = "concepts",
-  level = c(0:1)
-<<<<<<< HEAD
-) -> concepts
-
-concepts %>%
-  count(level)
-=======
-) -> OA_concepts
-
-OA_concepts %>%
-  rename(concept = display_name,
-         rel=related_concepts) %>%
-  select(concept,
-         level,
-         rel) %>%
-  unnest(rel,
-         names_sep = "_") %>%
-  rename(rel_concept = rel_display_name) %>%
-  select(concept,
-         level,
-         rel_id,
-         rel_concept,
-         rel_level,
-         rel_score,
-         ) %>%
-  filter(rel_level <2)  -> OAc_proximity
->>>>>>> 6b9db5e2bd4611211aae48736d76d7a2f021b201
-```
-
----
+WOS
 
 Importing WOS
 
@@ -84,6 +52,76 @@ Importing WoS Fields
 read_csv("WoS_categories.csv") %>%
   filter(Edition == "ESCI") %>%
   select(Category,Group) -> Wos_SC
+```
+
+---
+
+SCOPUS
+
+Scraping Scopus Categories
+
+```{r}
+read_html("https://service.elsevier.com/app/answers/detail/a_id/15181/supporthub/scopus/") %>%
+  html_elements(xpath="//td | //th") %>%
+  html_text() %>%
+  .[4:1005] -> Scopus_codes
+
+tibble(
+  Code = Scopus_codes[seq(1, length(Scopus_codes), by = 3)],
+  Subject = Scopus_codes[seq(2, length(Scopus_codes), by = 3)],
+  Field = Scopus_codes[seq(3, length(Scopus_codes), by = 3)]
+) -> Scopus_codes
+```
+
+Importing Scopus categories
+
+```{r}
+Scopus_db <- read_excel("Scopus_db.xlsx") %>%
+  transmute(ISSN = `Print-ISSN`,
+            eISSN = `E-ISSN`,
+            Active = `Active or Inactive`,
+            Type = `Source Type`,
+            Scopus_Citescore = 9,
+            Codes = `All Science Journal Classification Codes (ASJC)`
+) %>%
+  filter(Type == "Journal",
+         Active == "Active"
+         )
+```
+
+
+---
+
+OPENALEX
+
+Sampling all concepts
+
+```{r}
+oa_fetch(
+  entity = "concepts",
+  level = c(0:1)
+) -> concepts
+
+concepts %>%
+  count(level) -> OA_concepts
+
+OA_concepts %>%
+  rename(concept = display_name,
+         rel=related_concepts) %>%
+  select(concept,
+         level,
+         rel) %>%
+  unnest(rel,
+         names_sep = "_") %>%
+  rename(rel_concept = rel_display_name) %>%
+  select(concept,
+         level,
+         rel_id,
+         rel_concept,
+         rel_level,
+         rel_score,
+         ) %>%
+  filter(rel_level <2)  -> OAc_proximity
 ```
 
 
@@ -115,6 +153,8 @@ journals %>%
          !x_concepts %>% is.na()) -> db_j
 ```
 
+---
+
 Data cleaning
 
 ```{r}
@@ -140,6 +180,8 @@ db_j %>%
 
 ```
 
+---
+
 How many combinations of WOS categories?
 
 ```{r}
@@ -156,6 +198,9 @@ db_j %>%
 
 ```
 
+---
+
+Berger stuff
 
 Map mono-disciplinary association
 with Berger correlation
