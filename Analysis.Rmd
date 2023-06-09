@@ -1,0 +1,105 @@
+---
+title: "Analysis"
+author: "GG Cantone"
+date: "2023-06-09"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+pacman::p_load(
+  tidyverse,
+  openalexR,
+  readr,
+  readxl,
+  janitor,
+  ggExtra,
+  rvest
+)
+```
+
+
+Multidisciplinary?
+
+```{r}
+db_j %>%
+  mutate(mention_multidis = str_detect(tolower(WoS_JSC),"multidis|interdis"),
+         n_stnd = str_count(stnd_WoS_JSC,","),
+         multidis = if_else((n_stnd == 0) &
+                              (mention_multidis == 0),
+                            0,1)
+         ) %>%
+  mutate(x_concepts = map(x_concepts, ~ filter(.x,level < 2))
+         ) -> db_j
+
+```
+
+---
+
+How many combinations of WOS categories?
+
+```{r}
+
+db_j %>%
+  count(coarse_WoS_JSC) %>% View()
+
+db_j %>%
+  count(stnd_WoS_JSC) %>% View()
+
+db_j %>%
+  filter(multidis == F) %>%
+  count(stnd_WoS_JSC) %>% View()
+
+```
+
+---
+
+Berger stuff
+
+Map mono-disciplinary association
+with Berger correlation
+
+```{r}
+
+db_j %>%
+  filter(multidis == 0) %>%
+  unnest(x_concepts) %>%
+  summarise(score = sum(score*n_papers),
+            .by = c(stnd_WoS_JSC,display_name)
+            ) %>%
+  rename(max_OpAl_JSC = display_name) %>%
+  arrange(stnd_WoS_JSC,-score) %>%
+  mutate(max_score = score/sum(score),
+         .by = stnd_WoS_JSC) %>%
+  adorn_rounding(4) %>%
+  filter(score == max(score),
+         .by = stnd_WoS_JSC) %>%
+  mutate(name_lgt = str_length(stnd_WoS_JSC)) %>%
+  adorn_rounding(4) -> berger_map
+
+berger_map %>%
+  count(max_OpAl_JSC) %>%
+  arrange(-n)
+
+```
+
+Scatterplot
+
+```{r}
+
+berger_map %>%
+  ggplot(aes(x = max_score)) +
+  geom_density()
+          
+
+```
+
+
+Marginal Scatterplot
+
+```{r}
+ggMarginal(berger_map %>%
+  ggplot(aes(x = max_score,
+             y = name_lgt)
+         )+
+  geom_point())
+```

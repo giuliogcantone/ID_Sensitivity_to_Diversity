@@ -43,16 +43,61 @@ read_csv("Scientific.csv") %>%
   ) %>%
   select(-Type) %>%
   distinct(`Journal title`,
-           .keep_all = T) -> WoS_j
+           .keep_all = T) %>%
+  rename(WoS_JSC = `Web of Science Categories`,
+                     main_issn = ISSN
+                     ) %>%
+  mutate(WoS_JSC = WoS_JSC %>%
+                       str_replace(
+                         "Women'S Studies",
+                         "Women Studies")) %>%
+  select(main_issn,WoS_JSC, Languages)-> WoS_j
 ```
 
-Importing WoS Fields
+Mapping WoS SC and Areas
 
 ```{r}
-read_csv("WoS_categories.csv") %>%
-  filter(Edition == "ESCI") %>%
-  select(Category,Group) -> Wos_SC
+WoS_categories <- read_delim("WoS_categories.csv", 
+    delim = ";", escape_double = FALSE, trim_ws = TRUE) %>%
+  select(Category,Group) %>%
+  distinct() %>%
+  mutate(Category =
+           Category %>% str_to_title() %>%
+           str_replace_all(",",", "),
+         Group =
+           str_replace_all(Group, "\\|","; ")
+         ) -> WoS_SC
+
+
 ```
+
+Integrating SCJ and Areas
+
+```{r}
+WoS_j %>%
+  mutate(WoS_JSC =
+           WoS_JSC %>%
+           str_replace_all(" \\| ","; ")
+         ) %>%
+  separate_rows(WoS_JSC,sep = "; ") %>%
+  left_join(WoS_SC %>% rename(WoS_JSC = Category,
+                              WoS_Area = Group)) %>%
+  group_by(across(-c("WoS_JSC","WoS_Area"))) %>%
+  summarise(
+    WoS_JSC = str_c(WoS_JSC, collapse = "; "),
+    WoS_Area = str_c(WoS_Area, collapse = "; ")
+  ) %>%
+  ungroup() %>%
+  mutate(
+    WoS_Area =
+      map_chr(
+        str_split(WoS_Area, "; "),
+        ~ str_c(unique(.x),
+                collapse = "; ")
+        )
+    )-> WoS_j
+```
+
 
 ---
 
@@ -70,23 +115,83 @@ tibble(
   Code = Scopus_codes[seq(1, length(Scopus_codes), by = 3)],
   Subject = Scopus_codes[seq(2, length(Scopus_codes), by = 3)],
   Field = Scopus_codes[seq(3, length(Scopus_codes), by = 3)]
-) -> Scopus_codes
+  ) %>%
+  mutate(
+  Area = str_sub(Code, start = 1, end = 2) %>%
+    case_match(
+      "10" ~ "General",
+      "11" ~ "Agricultural and Biological Sciences",
+      "12" ~ "Arts and Humanities",
+      "13" ~ "Biochemistry, Genetics and Molecular Biology",
+      "14" ~ "Business, Management and Accounting",
+      "15" ~ "Chemical Engineering",
+      "16" ~ "Chemistry",
+      "17" ~ "Computer Science",
+      "18" ~ "Decision Sciences",
+      "19" ~ "Earth and Planetary Sciences",
+      "20" ~ "Economics, Econometrics and Finance",
+      "21" ~ "Energy",
+      "22" ~ "Engineering",
+      "23" ~ "Environmental Science",
+      "24" ~ "Immunology and Microbiology",
+      "25" ~ "Materials Science",
+      "26" ~ "Mathematics",
+      "27" ~ "Medicine",
+      "28" ~ "Neuroscience",
+      "29" ~ "Nursing",
+      "30" ~ "Pharmacology, Toxicology and Pharmaceutics",
+      "31" ~ "Physics and Astronomy",
+      "32" ~ "Psychology",
+      "33" ~ "Social Sciences",
+      "34" ~ "Veterinary",
+      "35" ~ "Dentistry",
+      "36" ~ "Health Professions"
+  )
+  ) -> Scopus_codes
 ```
 
 Importing Scopus categories
 
 ```{r}
+
 Scopus_db <- read_excel("Scopus_db.xlsx") %>%
   transmute(ISSN = `Print-ISSN`,
             eISSN = `E-ISSN`,
             Active = `Active or Inactive`,
             Type = `Source Type`,
-            Scopus_Citescore = 9,
-            Codes = `All Science Journal Classification Codes (ASJC)`
+            Scopus_Citescore = CiteScore %>% as.numeric(),
+            Codes = `All Science Journal Classification Codes (ASJC)` %>%
+              str_sub(end = -2)
 ) %>%
   filter(Type == "Journal",
          Active == "Active"
          )
+
+
+Scopus_db %>%
+  pivot_longer(1:2,
+               values_to = "ISSN") %>%
+  distinct(ISSN, .keep_all = T) %>%
+  select(-name) %>%
+  filter(!ISSN %>% is.na()) %>%
+  mutate(Scopus_JSC =
+           str_replace_all(Codes,
+                           setNames(Scopus_codes$Subject, Scopus_codes$Code)),
+         Scopus_Area =
+           str_replace_all(Codes,
+                           setNames(Scopus_codes$Area, Scopus_codes$Code)),
+         Scopus_Area =
+           map_chr(
+             str_split(Scopus_Area, "; "),
+             ~ str_c(unique(.x),
+                     collapse = "; "))
+         
+         ) %>%
+  transmute(main_issn = ISSN,
+            Scopus_JSC,
+            Scopus_Area,
+            Scopus_Citescore) -> Scopus_db
+
 ```
 
 
@@ -134,8 +239,11 @@ oa_fetch(
 ) -> journals
 ```
 
-Joins of categories
+---
 
+Database consolidation: joins of categories
+
+Join WoS
 ```{r}
 journals %>%
   transmute(id_j = id,
@@ -143,115 +251,25 @@ journals %>%
          main_issn = issn_l %>% as.character(),
          n_papers = works_count,
          x_concepts) %>%
-  left_join(WoS_j %>%
-              rename(WoS_JSC = `Web of Science Categories`,
-                     main_issn = ISSN
-                     ) %>%
-              select(main_issn,WoS_JSC,
-                     Languages)) %>%
+  left_join(WoS_j) %>%
   filter(!WoS_JSC %>% is.na(),
+         !WoS_Area %>% is.na(),
          !x_concepts %>% is.na()) -> db_j
 ```
 
----
-
-Data cleaning
+Join Scopus
 
 ```{r}
 db_j %>%
-  mutate(stnd_WoS_JSC = WoS_JSC %>%
-           str_replace("Public, Environmental & Occupational Health",
-                       "Public Health") %>%
-           str_replace_all(",",":") %>%
-           str_replace_all(" \\| ",", "),
-         coarse_WoS_JSC = stnd_WoS_JSC %>%
-           str_remove_all("\\:.*?(?=,|$)"),
-         coarse_WoS_JSC =
-           map_chr(str_split(coarse_WoS_JSC,", "),
-                   ~ str_c(unique(.x), collapse = ", ")),
-         mention_multidis = str_detect(tolower(WoS_JSC),"multidis|interdis"),
-         n_stnd = str_count(stnd_WoS_JSC,","),
-         multidis = if_else((n_stnd == 0) &
-                              (mention_multidis == 0),
-                            0,1)
-         ) %>%
-  mutate(x_concepts = map(x_concepts, ~ filter(.x,level < 2))
-         ) -> db_j
-
+  mutate(main_issn = main_issn %>%
+           str_replace_all("[^[:alnum:] ]", "")) %>%
+  left_join(Scopus_db) %>%
+  filter(!Scopus_JSC %>% is.na(),
+         !Scopus_Area %>% is.na()
+         )-> db_j
 ```
 
 ---
-
-How many combinations of WOS categories?
-
-```{r}
-
-db_j %>%
-  count(coarse_WoS_JSC) %>% View()
-
-db_j %>%
-  count(stnd_WoS_JSC) %>% View()
-
-db_j %>%
-  filter(multidis == F) %>%
-  count(stnd_WoS_JSC) %>% View()
-
-```
-
----
-
-Berger stuff
-
-Map mono-disciplinary association
-with Berger correlation
-
-```{r}
-
-db_j %>%
-  filter(multidis == 0) %>%
-  unnest(x_concepts) %>%
-  summarise(score = sum(score*n_papers),
-            .by = c(stnd_WoS_JSC,display_name)
-            ) %>%
-  rename(max_OpAl_JSC = display_name) %>%
-  arrange(stnd_WoS_JSC,-score) %>%
-  mutate(max_score = score/sum(score),
-         .by = stnd_WoS_JSC) %>%
-  adorn_rounding(4) %>%
-  filter(score == max(score),
-         .by = stnd_WoS_JSC) %>%
-  mutate(name_lgt = str_length(stnd_WoS_JSC)) %>%
-  adorn_rounding(4) -> berger_map
-
-berger_map %>%
-  count(max_OpAl_JSC) %>%
-  arrange(-n)
-
-```
-
-Scatterplot
-
-```{r}
-
-berger_map %>%
-  ggplot(aes(x = max_score)) +
-  geom_density()
-          
-
-```
-
-
-Marginal Scatterplot
-
-```{r}
-ggMarginal(berger_map %>%
-  ggplot(aes(x = max_score,
-             y = name_lgt)
-         )+
-  geom_point())
-```
-
-
 
 ## 
 
