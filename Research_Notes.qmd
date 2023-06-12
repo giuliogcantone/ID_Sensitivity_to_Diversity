@@ -1,0 +1,63 @@
+---
+title: "IDR stuff"
+format: html
+editor: visual
+---
+
+```{r setup}
+pacman::p_load(
+  tidyverse,
+  janitor
+)
+```
+
+## Research Questions
+
+### Do WoS have same average IDR level if one computes a fast-IDR measure on the conceptual scores of OpenAlex?
+
+#### Method: For each discipline (list of journals) on both WoS and Scopus is applied a IDR measure based on the summes OA scores multiplied per the number of papers of the journal.
+
+Prepare the database:
+
+```{r}
+db_j_exp <- db_j %>%
+  unnest(x_concepts) %>%
+  select(-id,-wikidata) %>%
+  filter(level < 2) %>%
+  rename(concept = display_name,
+         concept_score = score) %>%
+  filter(concept != "Combinatorial chemistry")
+
+concepts %>%
+  filter(display_name != "Combinatorial chemistry") %>%
+  transmute(concept = display_name,
+            related_concepts) %>%
+  unnest(related_concepts) %>%
+  filter(level < 2) %>%
+  select(
+    concept,
+    related_concept = display_name,
+         score) %>%
+  mutate(score = log(score)/max(log(score))) %>%
+  adorn_rounding(4) %>% View()
+  pivot_wider(names_from = related_concept,
+              values_from = score,
+              values_fill = 0
+              ) %>%
+  arrange(concept) %>%
+  select(concept, sort(names(.)[-1])) %>%
+  select(-concept) %>%
+  as.matrix() -> concepts_matrix
+
+
+colnames(concepts_matrix) -> row.names(concepts_matrix)
+
+concepts_matrix %>% isSymmetric.matrix()
+```
+
+1# WoS Areas
+
+```{r}
+db_j_exp %>%
+  separate_longer_delim(WoS_Area, "; ")
+```
