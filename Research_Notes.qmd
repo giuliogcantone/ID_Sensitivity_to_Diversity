@@ -7,17 +7,15 @@ editor: visual
 ```{r setup}
 pacman::p_load(
   tidyverse,
-  janitor
+  janitor,
+  MASS,
+  car
 )
 ```
 
-## Research Questions
+## Descriptives
 
-### Do WoS have same average IDR level if one computes a fast-IDR measure on the conceptual scores of OpenAlex?
-
-#### Method: For each discipline (list of journals) on both WoS and Scopus is applied a IDR measure based on the summes OA scores multiplied per the number of papers of the journal.
-
-Prepare the database:
+Are OAscores from one pop or a mixture of pops?
 
 ```{r}
 db_j_exp <- db_j %>%
@@ -31,6 +29,70 @@ db_j_exp <- db_j %>%
 concepts %>%
   filter(display_name != "Combinatorial chemistry") %>%
   transmute(concept = display_name,
+            related_concepts,
+            c_level = level) %>%
+  unnest(related_concepts) %>%
+  filter(level < 2) %>%
+  select(
+    concept,
+    c_level,
+    related_concept = display_name,
+    r_level = level,
+    score) %>%
+  mutate(relation_type =
+           case_when(
+             (c_level == 0 & r_level == 0) ~ "High level",
+             (c_level == 1 & r_level == 1) ~ "Low level",
+             TRUE ~ "Middle level"
+           ) %>% factor(c("High level",
+                           "Middle level",
+                           "Low level"))
+         )-> concepts_ext
+```
+
+Visualise how score is strongly dependent on the type of relation
+
+(eg. English and Literature same as Organic and Inorganich Chemistry)
+
+```{r}
+concepts_ext %>%
+  ggplot() +
+  geom_density(aes(x = score,
+                   fill = relation_type),
+            position = "stack"
+  )
+```
+
+Normalisation
+
+```{r}
+concepts_ext %>%
+  mutate(score = score - mean(score),
+         .by = relation_type) %>%
+  mutate(
+    score = score + abs(min(score)),
+    score = score / max(score), 
+    score_rank = score %>% rank() / n()) %>% View()
+  ggplot() +
+  geom_density(aes(x = score,
+                   fill = relation_type),
+            position = "stack"
+  )
+```
+
+## Research Questions
+
+### Do WoS have same average IDR level if one computes a fast-IDR measure on the conceptual scores of OpenAlex?
+
+#### Method: For each discipline (list of journals) on both WoS and Scopus is applied a IDR measure based on the summes OA scores multiplied per the number of papers of the journal.
+
+Prepare the database:
+
+```{r}
+
+concepts %>%
+  filter(display_name != "Combinatorial chemistry") %>%
+  transmute(concept = display_name,
             related_concepts) %>%
   unnest(related_concepts) %>%
   filter(level < 2) %>%
@@ -38,8 +100,8 @@ concepts %>%
     concept,
     related_concept = display_name,
          score) %>%
-  mutate(score = log(score)/max(log(score))) %>%
-  adorn_rounding(4) %>% View()
+  mutate(score = score/max(score)) %>%
+  adorn_rounding(4) %>%
   pivot_wider(names_from = related_concept,
               values_from = score,
               values_fill = 0
@@ -60,4 +122,11 @@ concepts_matrix %>% isSymmetric.matrix()
 ```{r}
 db_j_exp %>%
   separate_longer_delim(WoS_Area, "; ")
+```
+
+```{r}
+journals %>%
+  select(counts_by_year,display_name) -> assign
+
+View(assign)
 ```

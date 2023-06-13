@@ -278,9 +278,35 @@ Sample papers
 ```{r}
 oa_fetch(
   entity = "works",
+  primary_location.source.id = db_j$id_j,
   abstract = F,
-  publication_year = c(2011:2015),
+  publication_year = c(2012,2015,2018),
   type = "journal-article",
   options = list(sample = 10)
 ) -> sample
+
+
+oa_fetch(
+  entity = "works",
+  primary_location.source.id = db_j$id_j[runif(50,
+                                               0,
+                                               nrow(db_j))],
+  abstract = F,
+  publication_year = c(2012,2015,2018),
+  type = "journal-article",
+#  options = list(sample = 15000)
+) -> sample
 ```
+
+List of referenced papers in the sample
+
+```{r}
+smpl_rl = sample %>%
+  select(display_name, referenced_works) %>%
+  unnest(referenced_works) %>%
+  distinct(referenced_works) %>%
+  pull(referenced_works)
+
+smpl_rl[3]
+```
+
