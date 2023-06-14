@@ -1,7 +1,5 @@
 ###
 
-trueD <- function() {}
-
 
 robustrao::RaoStirling(matrix(rep(c(5,2,2),10),
                               nrow = 3),
@@ -10,3 +8,11 @@ robustrao::RaoStirling(matrix(rep(c(5,2,2),10),
 
 1/(1 - RS)
 
+1 - DescTools::Gini(c(1,2,3))
+
+
+DescTools::GiniSimpson(c(.5,.5))
+
+abdiv::simpson(c(10,10,10))
+
+abdiv::simpson(c(10,10,10))

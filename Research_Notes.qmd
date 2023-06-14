@@ -67,14 +67,18 @@ Normalisation
 
 ```{r}
 concepts_ext %>%
-  mutate(score = score - mean(score),
+  mutate(score_within = score - mean(score),
          .by = relation_type) %>%
+  mutate(score_within = score_within - min(score_within)) %>%
+  mutate(score_asym = score / sum(score),
+         .by = concept) %>%
+  mutate(score_asym = score_asym / max(score_asym),
+         score_asym_rank = score_asym %>% rank()/n() ) %>%
   mutate(
-    score = score + abs(min(score)),
-    score = score / max(score), 
-    score_rank = score %>% rank() / n()) %>% View()
+    score_w_rank = score_within %>% rank() / n(),
+    score_w_norm = score_within / max(score_within)) %>%
   ggplot() +
-  geom_density(aes(x = score,
+  geom_density(aes(x = score_asym,
                    fill = relation_type),
             position = "stack"
   )
