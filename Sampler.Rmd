@@ -98,6 +98,28 @@ WoS_j %>%
     )-> WoS_j
 ```
 
+Importing WoS s-d matrix (thanks Rafols)
+
+```{r}
+WoS_d = list()
+
+WoS_d$Citations <- read_excel("s_d_matrices.xlsx") %>%
+  select(-1) %>%
+  as.matrix()
+
+colnames(WoS_d$Citations) -> rownames(WoS_d$Citations)
+
+WoS_d$Cosine_S <- read_excel("s_d_matrices.xlsx", 
+    sheet = "CosineSimilarity Matrix") %>%
+  select(-1) %>%
+  as.matrix()
+
+colnames(WoS_d$Cosine_S) -> rownames(WoS_d$Cosine_S)
+
+WoS_d$Citations %>% View()
+```
+
+
 
 ---
 
